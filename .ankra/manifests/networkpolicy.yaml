@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backstage-backend
+  labels:
+    app.kubernetes.io/name: backstage-backend
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: backstage-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+    - ports:
+        - port: 7007
+          protocol: TCP
