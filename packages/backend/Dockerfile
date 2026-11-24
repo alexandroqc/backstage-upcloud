@@ -48,9 +48,11 @@ RUN pip3 install mkdocs-techdocs-core==1.1.7
 
 # From here on we use the least-privileged `node` user to run the backend.
 WORKDIR /app
-RUN chown node:node /app \
-    && mkdir -p /home/node/.yarn/berry \
-    && chown -R node:node /home/node/.yarn
+RUN chown node:node /app
+# The yarn cache mount below creates only its leaf directory; the parent
+# /home/node/.yarn/berry is created as root otherwise, and yarn needs to write
+# its index directory next to the cache.
+RUN mkdir -p /home/node/.yarn/berry && chown -R node:node /home/node/.yarn
 USER node
 
 # This switches many Node.js dependencies to production mode.
