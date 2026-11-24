@@ -48,7 +48,9 @@ RUN pip3 install mkdocs-techdocs-core==1.1.7
 
 # From here on we use the least-privileged `node` user to run the backend.
 WORKDIR /app
-RUN chown node:node /app
+RUN chown node:node /app \
+    && mkdir -p /home/node/.yarn/berry \
+    && chown -R node:node /home/node/.yarn
 USER node
 
 # This switches many Node.js dependencies to production mode.
