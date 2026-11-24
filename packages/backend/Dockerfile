@@ -1,17 +1,32 @@
 # This dockerfile builds an image for the backend package.
-# It should be executed with the root of the repo as docker context.
 #
-# Before building this image, be sure to have run the following commands in the repo root:
+# It is self-contained: the backend is built inside the image from the repo
+# source, so the only input is the repository checkout. Build it with the root
+# of the repo as the docker context:
 #
-# yarn install
-# yarn tsc
-# yarn build:backend
+#   docker build . -f packages/backend/Dockerfile
 #
-# Host build steps (yarn install, yarn build:backend) must use the same
-# Node version as the FROM image below. Mismatched versions break native modules.
-#
-# Once the commands have been run, you can build the image using `yarn build-image`
+# Both stages use the same Node version, so native modules built in the build
+# stage match the runtime stage.
 
+# ---------------------------------------------------------------------------
+# Build stage: install all workspace dependencies and build the backend bundle.
+# ---------------------------------------------------------------------------
+FROM node:24-trixie-slim AS build
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libsqlite3-dev python3 build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV HUSKY=0
+WORKDIR /app
+COPY . .
+RUN yarn install --immutable
+RUN yarn workspace example-backend build
+
+# ---------------------------------------------------------------------------
+# Runtime stage.
+# ---------------------------------------------------------------------------
 FROM node:24-trixie-slim
 
 # Install sqlite3 dependencies. You can skip this if you don't use sqlite3 in the image,
@@ -34,27 +49,32 @@ RUN pip3 install mkdocs-techdocs-core==1.1.7
 # From here on we use the least-privileged `node` user to run the backend.
 WORKDIR /app
 RUN chown node:node /app
+# The yarn cache mount below creates only its leaf directory; the parent
+# /home/node/.yarn/berry is created as root otherwise, and yarn needs to write
+# its index directory next to the cache.
+RUN mkdir -p /home/node/.yarn/berry && chown -R node:node /home/node/.yarn
 USER node
-
 
 # This switches many Node.js dependencies to production mode.
 ENV NODE_ENV=production
 
-# Copy over Yarn 3 configuration, release, and plugins
+# Copy Yarn 3 configuration, release, and plugins
 COPY --chown=node:node .yarn ./.yarn
 COPY --chown=node:node .yarnrc.yml ./
 
 # Copy repo skeleton first, to avoid unnecessary docker cache invalidation.
 # The skeleton contains the package.json of each package in the monorepo,
 # and along with yarn.lock and the root package.json, that's enough to run yarn install.
-COPY --chown=node:node yarn.lock package.json packages/backend/dist/skeleton.tar.gz ./
+COPY --chown=node:node --from=build /app/packages/backend/dist/skeleton.tar.gz ./
+COPY --chown=node:node yarn.lock package.json ./
 RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
 
 RUN --mount=type=cache,target=/home/node/.yarn/berry/cache,sharing=locked,uid=1000,gid=1000 \
     yarn workspaces focus --all --production
 
-# Then copy the rest of the backend bundle, along with any other files we might want.
-COPY --chown=node:node packages/backend/dist/bundle.tar.gz app-config*.yaml ./
+# Then copy the backend bundle and the app configuration files.
+COPY --chown=node:node --from=build /app/packages/backend/dist/bundle.tar.gz ./
+COPY --chown=node:node app-config*.yaml ./
 RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
 
 CMD ["node", "packages/backend", "--config", "app-config.yaml"]

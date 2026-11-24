@@ -1,6 +1,6 @@
 name: Yarn Lock Changes
 on:
-  pull_request_target:
+  pull_request:
     paths:
       - 'yarn.lock'
 
@@ -19,12 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # Fetch the commit that's merged into the base rather than the target ref.
-          ref: 'refs/pull/${{ github.event.pull_request.number }}/merge'
           persist-credentials: false
-          # Safe to allow: contents is read-only and the checkout is only ever
-          # diffed for yarn.lock changes, never built or executed.
-          allow-unsafe-pr-checkout: true
 
       - name: Yarn Lock Changes
         uses: Simek/yarn-lock-changes@v0.14.1

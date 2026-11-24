@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backstage-backend
+  labels:
+    app.kubernetes.io/name: backstage-backend
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage-backend
+  labels:
+    app.kubernetes.io/name: backstage-backend
+  annotations:
+    ankra.io/generated: "true"
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backstage-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backstage-backend
+    spec:
+      serviceAccountName: backstage-backend
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+        - name: ankra-registry-pull
+      containers:
+        - name: backstage-backend
+          image: registry.ankra.cloud/org-212bc3a3-2524-4d1a-b5cc-05654508cdf1/backstage-upcloud:${{ ankra.image_tag }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 7007
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-upcloud-db-app
+                  key: uri
+            - name: ANKRA_RELEASE
+              value: "${{ ankra.image_tag }}"
+            - name: HOST
+              value: "::"
+            - name: NODE_ENV
+              value: "production"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+            timeoutSeconds: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 512Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}
